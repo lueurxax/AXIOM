@@ -1,8 +1,10 @@
 # AXIOM
 
-AXIOM is an agent-native systems programming language specification aimed at autonomous code generation, structural program transformation, and deterministic native compilation.
+AXIOM is a specification for an agent-native systems programming language designed for autonomous code generation, structural program transformation, and deterministic native compilation.
 
 The repository is currently in the specification and planning stage. It does not yet contain a compiler or runtime implementation.
+
+AXIOM is being designed around a canonical typed program graph, explicit effects, ownership-centered memory, structured concurrency, and machine-verifiable language semantics.
 
 ## Repository Contents
 
@@ -14,6 +16,7 @@ The repository is currently in the specification and planning stage. It does not
 
 ## Current State
 
+- Repository maturity: specification and planning only
 - Phase 0 semantics are being defined for modules, packages, and editions
 - Phase 1 formal specification work has started
 - The canonical typed program graph is the normative program representation
@@ -31,3 +34,7 @@ The repository is currently in the specification and planning stage. It does not
 - Complete `spec/modules.yaml`
 - Expand the spec set with `types.yaml`, `effects.yaml`, `errors.yaml`, `memory.yaml`, `concurrency.yaml`, `abi.yaml`, `determinism.yaml`, `validation.yaml`, and `ir.yaml`
 - Begin Phase 2 work on the canonical program graph and patch model
+
+## License
+
+This repository is proprietary. See `LICENSE`.
