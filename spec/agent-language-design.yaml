@@ -710,8 +710,19 @@ concurrency_requirements:
     statement: >
       Concurrency MUST follow structured task lifetimes.
     guarantees:
-      - parent_scope_owns_children
-      - cancellation_propagates
+      - parent_scope_owns_children: >
+          A parent task MUST NOT complete (succeed, fail, or return) while any
+          child task is still running. "Running" includes cleanup after
+          cancellation. The parent MUST either join all children (await their
+          full termination) or send cancellation and then wait for all cancelled
+          children to fully terminate before the parent itself returns.
+          There is no distinction between "semantic completion" and "cleanup
+          completion" for this rule: a child is done only when fully terminated.
+          This invariant applies to all await primitives: join, await_all,
+          await_any, and with_timeout.
+      - cancellation_propagates: >
+          A cancellation signal sent to a task propagates to all its children
+          transitively via cancellation edges.
     operational_semantics:
       spawn: "spawn(task) -> TaskHandle<T,E>"
       join: "join(handle) -> Outcome<T, TaskError<E>>; blocks until child completes"
@@ -719,10 +730,13 @@ concurrency_requirements:
         await_all(handles) -> Outcome<Vec<T>, TaskError<E>>
         Blocks until either: (a) all child tasks succeed, or (b) any child fails.
         On (a): returns Success(Vec<T>) in spawn order.
-        On (b): sends cancellation to all remaining running children (does NOT wait
-          for them to finish), then returns Failure(TaskError<E>) with the first
-          failure observed. The scheduler MUST NOT block the caller on cancelled
-          children; their cleanup runs asynchronously.
+        On (b): sends cancellation to all remaining running children, then blocks
+          until all cancelled children have fully terminated (including cleanup),
+          THEN returns Failure(TaskError<E>) with the first failure observed.
+          The parent does NOT resume until every child has fully terminated.
+          This preserves CON-002: a parent MUST NOT complete while any child is
+          still running. A child is considered done only when fully terminated,
+          not when cancellation has been sent.
         This is the default (fail-fast) mode.
       await_all_collect: >
         await_all(handles, collect_errors: true)
@@ -736,7 +750,12 @@ concurrency_requirements:
           per failed child in completion order.
         The partial success data is part of the formal error type; implementers MUST
           populate both fields.
-      await_any: "await_any(handles) -> Outcome<T, TaskError<E>>; blocks until first succeeds; cancels remainder"
+      await_any: >
+        await_any(handles) -> Outcome<T, TaskError<E>>
+        Blocks until the first child succeeds; sends cancellation to remaining
+        children, then blocks until all cancelled children have fully terminated
+        (including cleanup), THEN returns Success(T). Consistent with CON-002:
+        the parent does NOT resume until every child has fully terminated.
     timeout_model:
       primitive: "with_timeout(duration, task) -> Outcome<T, TimeoutError>"
       cancellation: cancels task and all its children if duration exceeded

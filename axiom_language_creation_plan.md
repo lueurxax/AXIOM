@@ -707,9 +707,12 @@ join(handle) -> Outcome<T, TaskError<E>>:
 await_all(handles) -> Outcome<Vec<T>, TaskError<E>>:
   default (fail-fast): blocks until either (a) all children succeed, or (b) any child fails.
   On (a): returns Success(Vec<T>) in spawn order.
-  On (b): sends cancellation to all remaining running children (does NOT wait for them
-    to finish), then returns Failure(TaskError<E>) with the first failure observed.
-    Cancelled children complete cleanup asynchronously.
+  On (b): sends cancellation to all remaining running children, then blocks until
+    all cancelled children have completed (including cleanup), THEN returns
+    Failure(TaskError<E>) with the first failure observed.
+    The parent does NOT resume until every child — including cancelled ones — has
+    fully terminated. This preserves CON-002: a parent MUST NOT complete while
+    any child task is still running.
 
 await_all(handles, collect_errors: true)
     -> Outcome<Vec<T>, TaskError::Collected(successes: Vec<T>, errors: Vec<TaskError<E>>)>:
@@ -722,7 +725,10 @@ await_all(handles, collect_errors: true)
 
 await_any(handles) -> Outcome<T, TaskError<E>>:
   blocks until the first child task completes successfully;
-  remaining children are cancelled once a success is observed.
+  sends cancellation to remaining children once a success is observed,
+  then blocks until all cancelled children have fully terminated (including
+  cleanup), THEN returns Success(T). The parent does NOT resume until every
+  child has fully terminated. Consistent with CON-002.
 
   If all children fail before any succeeds:
     returns Failure(TaskError::AllFailed(Vec<TaskError<E>>))
@@ -753,6 +759,10 @@ CON-001  every task MUST have exactly one parent task, except the root task
          which has no parent; the resulting task graph MUST be a tree
 CON-002  a parent task MUST NOT complete (succeed or fail) while any child
          task is still running; it MUST either join all children or cancel them
+         and then wait for all cancelled children to fully terminate (including
+         cleanup) before the parent itself returns. There is no distinction
+         between "semantic completion" and "cleanup completion" for this rule:
+         a child is considered done only when it has fully terminated.
 ```
 
 #### Failure propagation
