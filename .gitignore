@@ -1,0 +1,12 @@
+.idea/
+.DS_Store
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Common future build outputs
+bin/
+dist/
+out/
+target/

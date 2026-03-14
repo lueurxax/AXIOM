@@ -10,10 +10,13 @@ The repository is currently in the **specification and planning phase**. No impl
 
 ```
 AXIOM/
-├── CLAUDE.md                        # This file
-├── axiom_language_creation_plan.md  # 12-phase implementation roadmap
+├── README.md                        # Primary repository entry point
+├── CLAUDE.md                        # Project notes for agent workflows
+├── axiom_language_creation_plan.md  # Phased implementation roadmap
+├── skills-required.md               # Skill map by implementation phase
 └── spec/
-    └── agent-language-design.yaml   # Machine-consumable language specification (v0.1)
+    ├── agent-language-design.yaml   # Foundational language design specification
+    └── scope.yaml                   # Exact AXIOM v1 scope and exclusions
 ```
 
 ## Core Language Properties
@@ -64,22 +67,23 @@ Requirements use stable identifiers that agents reference during synthesis and v
 
 ## Implementation Phases
 
-| Phase | Topic                      | Key Deliverable              |
-|-------|----------------------------|------------------------------|
-| 1     | Core Specification         | Full `spec/` YAML suite      |
-| 2     | Canonical Program Graph    | CPG schema + library         |
-| 3     | Patch System               | `apply_patch`, `semantic_diff` |
-| 4     | Type System                | `axiom-typecheck`            |
-| 5     | Region Memory System       | Region validator             |
-| 6     | Effect System              | Effect analyzer              |
-| 7     | Concurrency Model          | Task dependency graph validator |
-| 8     | Intermediate Representation| `axiom-ir`, `axiom-lowering` |
-| 9     | Backend                    | `axiom-compiler`, `axiom-abi` |
-| 10    | Minimal Runtime            | `axiom-runtime`              |
-| 11    | Agent Tooling              | Compiler API for agents      |
-| 12    | Agent SDK                  | Full agent synthesis workflow |
+| Phase | Topic                       | Key Deliverable                 |
+|-------|-----------------------------|---------------------------------|
+| 0     | Modules, Packages, Editions | `spec/modules.yaml`             |
+| 1     | Core Specification          | Full `spec/` YAML suite         |
+| 2     | Canonical Program Graph     | CPG schema + library            |
+| 3     | Patch System                | `apply_patch`, `semantic_diff`  |
+| 4     | Type System                 | `axiom-typecheck`               |
+| 5     | Region Memory System        | Region validator                |
+| 6     | Effect System               | Effect analyzer                 |
+| 7     | Concurrency Model           | Task dependency graph validator |
+| 8     | Intermediate Representation | `axiom-ir`, `axiom-lowering`    |
+| 9     | Backend                     | `axiom-compiler`, `axiom-abi`   |
+| 10    | Minimal Runtime             | `axiom-runtime`                 |
+| 11    | Agent Tooling               | Compiler API for agents         |
+| 12    | Agent SDK                   | Full agent synthesis workflow   |
 
-**Critical path:** Phase 2 (CPG) + Phase 3 (Patch Engine) + validation are foundational — all other phases depend on them.
+**Critical path:** Phase 0 (module semantics) + Phase 2 (CPG) + Phase 3 (patch engine) + validation are foundational for all later phases.
 
 ## First Milestone Target
 
@@ -98,6 +102,8 @@ Initial language subset: functions, records, pattern matching, regions, `Outcome
 ```
 spec/
   agent-language-design.yaml  ✓ (exists)
+  scope.yaml                  ✓ (exists)
+  modules.yaml
   types.yaml
   effects.yaml
   errors.yaml
