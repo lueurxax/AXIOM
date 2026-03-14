@@ -1,0 +1,980 @@
+spec:
+  name: agent-native-systems-language
+  version: 0.2
+  status: draft
+  last_updated: 2026-03-14
+  audience: autonomous-agents
+  language_generation_target: high-performance-systems-language
+  intent: >
+    Define the foundational design principles for a systems language that
+    autonomous agents can generate, audit, optimize, and operate with high
+    confidence.
+
+normative_keywords:
+  MUST: absolute requirement
+  MUST_NOT: absolute prohibition
+  SHOULD: strong recommendation
+  MAY: optional capability
+
+design_goals:
+  - id: G1
+    level: MUST
+    statement: The language MUST optimize for predictability, analyzability, and performance before syntactic brevity.
+  - id: G2
+    level: MUST
+    statement: The language MUST support local reasoning so an agent can infer ownership, effects, and failure modes from nearby code.
+  - id: G3
+    level: MUST
+    statement: The language MUST enable zero-cost abstractions suitable for kernel, runtime, networking, storage, and embedded workloads.
+  - id: G4
+    level: SHOULD
+    statement: The language SHOULD minimize the semantic gap between source code, intermediate representation, and machine behavior.
+  - id: G5
+    level: SHOULD
+    statement: The language SHOULD provide first-class tooling contracts so machines can inspect codebases without reverse-engineering compiler internals.
+
+non_goals:
+  - id: NG1
+    statement: The language is not intended to maximize terseness or clever syntax.
+  - id: NG2
+    statement: The language is not intended to rely on a mandatory tracing garbage collector.
+  - id: NG3
+    statement: The language is not intended to permit silent undefined behavior in safe code.
+  - id: NG4
+    statement: The language is not intended to provide ambient authority for filesystem, network, clock, process, or secret access.
+
+principles:
+  - id: P1
+    level: MUST
+    title: Deterministic by default
+    rule: >
+      Program semantics MUST be deterministic for identical inputs, toolchain
+      version, target, and declared feature set.
+    implications:
+      - Nondeterminism MUST enter only through explicit I/O, time, randomness, or concurrency boundaries.
+      - Build outputs SHOULD be reproducible.
+
+  - id: P2
+    level: MUST
+    title: Explicit effects
+    rule: >
+      Allocation, mutation, I/O, blocking, cancellation, unsafe operations, and
+      cross-thread communication MUST be explicit in the source model.
+    implications:
+      - Hidden control flow via implicit exceptions MUST_NOT exist.
+      - Hidden heap allocation in ostensibly value-only operations SHOULD_NOT exist.
+
+  - id: P3
+    level: MUST
+    title: Safety by default, unsafety by exception
+    rule: >
+      Memory safety, type safety, initialization safety, and data-race freedom
+      MUST hold in safe code.
+    implications:
+      - Any escape hatch MUST be lexically marked and auditable.
+      - Unsafe blocks MUST carry a narrow, documented contract.
+
+  - id: P4
+    level: MUST
+    title: No undefined behavior in safe code
+    rule: >
+      All behavior reachable from safe code MUST have specified semantics,
+      including integer overflow, invalid states, and failed preconditions.
+    implications:
+      - The implementation MAY trap, return an error, or define wraparound semantics, but it MUST specify which behavior applies.
+
+  - id: P5
+    level: MUST
+    title: Ownership-centered resource model
+    rule: >
+      The resource model MUST be ownership with borrowing and explicit
+      allocator control rather than global garbage collection.
+    implications:
+      - Values have ownership modes: owned, borrowed_shared, borrowed_exclusive, or moved.
+      - borrowed_shared and borrowed_exclusive MUST NOT coexist on the same value.
+      - A borrowed reference MUST NOT outlive its source region.
+      - Moving a value invalidates the source binding.
+      - Lifetimes SHOULD be inferable where possible and writable when needed.
+      - Destruction MUST be deterministic.
+
+  - id: P6
+    level: MUST
+    title: Structured concurrency
+    rule: >
+      Concurrency primitives MUST compose through structured parent-child task
+      relationships with explicit join, cancellation, and timeout semantics.
+    implications:
+      - Detached background execution MUST be opt-in and lexically marked with detach!.
+      - Shared mutable state across tasks MUST require synchronization primitives or proven disjointness.
+      - join/await_all/await_any semantics MUST be defined operationally, not only declaratively.
+      - Timeout MUST be expressed in logical time units; wall-clock requires TimeCap.
+      - If a child task fails and the parent does not handle the error, the parent MUST be cancelled (fail-fast default).
+      - Region ownership MAY be transferred between parent and child tasks via owned Region values.
+
+  - id: P7
+    level: MUST
+    title: Errors are values
+    rule: >
+      Recoverable failure MUST be represented in the type system and propagated
+      explicitly using Outcome<T,E>.
+    implications:
+      - Implicit stack unwinding for ordinary errors MUST_NOT be the default.
+      - APIs MUST distinguish recoverable errors from invariants whose violation terminates execution.
+      - Outcome<T,E> is the ONLY fallible return type; Result and Option are not separate error channels.
+
+  - id: P8
+    level: MUST
+    title: Capability-based side effects
+    rule: >
+      Access to external resources MUST flow through explicit capability objects,
+      not ambient authority.
+    implications:
+      - Libraries MUST_NOT silently read environment variables, the clock, the network, or the filesystem without passed-in capability objects.
+      - Capability objects are owned first-class values; passing one transfers authority.
+      - Capability objects MUST be forgeable only at root system boundaries.
+      - Capability objects MUST be mockable for testing.
+      - Capabilities MAY be narrowed (split) but not forged by library code.
+
+  - id: P9
+    level: SHOULD
+    title: Regular, low-ambiguity syntax
+    rule: >
+      Surface syntax SHOULD be easy to parse, format, diff, and generate by
+      machines.
+    implications:
+      - Context-sensitive grammar SHOULD be minimized.
+      - Significant whitespace MUST_NOT change semantics.
+      - In v1, the canonical typed graph MUST remain the sole source of truth.
+      - If a printer is provided (REPR-002, MAY), a canonical formatter SHOULD
+        exist and SHOULD be deterministic and idempotent. Formatter is MAY in v1
+        (REPR-004); the round-trip constraint applies only if a parser is also
+        provided (REPR-003).
+
+  - id: P10
+    level: MUST
+    title: Zero-cost abstractions
+    rule: >
+      Abstractions such as generics, iterators, traits, interfaces, and async
+      constructs MUST compile to code with predictable cost models.
+    implications:
+      - Hidden virtual dispatch MUST be opt-in.
+      - Hidden allocation or scheduler interaction MUST be visible in API shape or type signatures.
+
+  - id: P11
+    level: MUST
+    title: Whole-program inspectability
+    rule: >
+      The toolchain MUST expose stable machine-readable representations of
+      syntax, types, symbols, diagnostics, and dependency graphs.
+    implications:
+      - Compiler diagnostics MUST have structured JSON form keyed by requirement ID and stable_id.
+      - Agents MUST be able to request effect summaries, borrow summaries, and capability requirements
+        (Phase 11a; graph-level; no backend required).
+      - Symbol and dependency queries MUST be available as first-class tooling API (Phase 11a).
+      - >
+        optimization_remarks SHOULD be provided once the backend is available (Phase 11b).
+        optimization_remarks is a backend-dependent API and is therefore SHOULD, not MUST.
+        The MUST obligation is for graph-level analysis summaries (effect, borrow, capability);
+        optimization remarks are a compilation-time enhancement that requires the SSA backend.
+
+  - id: P12
+    level: MUST
+    title: Stable module and package semantics
+    rule: >
+      Modules, visibility, imports, and dependency resolution MUST be explicit
+      and deterministic.
+    implications:
+      # v1 in-scope (MOD-SCOPE-001 through MOD-SCOPE-006):
+      - The build graph MUST_NOT depend on import order side effects.
+      - Visibility MUST be declared (public / internal / private) and compiler-enforced.
+      # deferred to future editions (MOD-003, MOD-SCOPE-007 through MOD-SCOPE-009):
+      - Dependency locking via a content-addressed lockfile is a future-edition requirement.
+      - Vendoring for offline and reproducible builds is a future-edition requirement.
+
+  - id: P13
+    level: MUST
+    title: FFI without semantic leaks
+    rule: >
+      Interoperability with C and other low-level ABIs MUST be supported, but
+      foreign unsafety MUST remain explicit at the boundary.
+    implications:
+      - ABI, layout, calling convention, and ownership transfer MUST be declarable.
+      - Safe wrappers SHOULD isolate raw foreign interfaces from the rest of the program.
+      - Crossing an FFI boundary requires UnsafeFfiCap.
+
+  - id: P14
+    level: SHOULD
+    title: Observability as a first-class concern
+    rule: >
+      Instrumentation for logs, traces, metrics, and profiling SHOULD compose
+      without forcing a large runtime.
+    implications:
+      - The language or standard library SHOULD make structured telemetry cheap to attach.
+      - Panic and crash reports SHOULD preserve machine-readable context.
+
+  - id: P15
+    level: MUST
+    title: Explicit evolution model
+    rule: >
+      Breaking changes to syntax, semantics, or standard APIs MUST be gated by
+      an explicit edition, feature gate, or version boundary.
+    implications:
+      - Code generation agents MUST be able to target a declared language edition.
+      - Deprecation paths MUST be machine-detectable.
+      - Each edition is a named, immutable snapshot of language semantics.
+
+core_architecture_requirements:
+  - id: ARCH-001
+    title: canonical_program_representation
+    rule: program_structure
+    statement: >
+      Programs MUST be represented as a canonical typed program graph.
+    constraints:
+      nodes_are_typed: true
+      edges_include:
+        - control_flow
+        - data_flow
+        - effect_flow
+        - ownership_flow
+        - task_dependency  # top-level family; three first-class subkinds below
+      task_dependency_subkinds:
+        parent_child:
+          description: >
+            Encodes the structured task tree (CON-001). Every Task except the
+            root MUST have exactly one incoming parent_child edge. The
+            sub-graph induced by parent_child edges MUST be a tree.
+          invariants:
+            - every non-root task has exactly one incoming parent_child edge
+            - parent_child sub-graph is acyclic
+        cancellation:
+          description: >
+            Encodes cancellation scope membership. A cancellation edge A → B
+            means cancelling A also cancels B. Used by CON-003 (fail-fast
+            propagation) and with_timeout.
+          invariants:
+            - cancellation edges MUST NOT create cycles
+            - a child task implicitly inherits its parent's cancellation
+              edges unless the child carries an explicit override
+        dependency:
+          description: >
+            Encodes an explicit data or ordering dependency that is NOT a
+            parent-child relationship (e.g. await_any, shared read-only region
+            access per CON-010). dependency edges MAY form a DAG; they are not
+            required to be a tree.
+          invariants:
+            - dependency edges do NOT imply region ownership transfer
+              (ownership transfer requires parent_child + CON-007/CON-008)
+      encoding_note: >
+        Implementations MAY represent task_dependency as a single edge type
+        with a required `kind` field drawn from the closed enumeration
+        {parent_child, cancellation, dependency}. An absent or unknown kind
+        MUST be rejected by the validator (reject_unknown_constructs: true).
+    verification:
+      canonicalization_produces_unique_form: true
+
+  - id: ARCH-002
+    title: stable_node_identity
+    rule: identity
+    statement: >
+      Every program node MUST have two complementary identity hashes:
+      stable_id (persistent semantic node identity) and semantic_id
+      (current semantic content hash).
+    derivation_algorithm:
+      stable_id:
+        formula: >
+          named nodes (Module, Function, Type, Effect):
+            stable_id = hash(node_type | declaring_scope_lineage | semantic_name_seed)
+          anonymous nodes (Block, Expression, Pattern, Task):
+            stable_id = hash(node_type | lineage_anchor | identity_seed)
+        identity_seed:
+          semantics: >
+            Allocated exactly once when a semantic node first appears in the
+            canonical graph. Persisted by the patch engine and serialized graph
+            form. MUST survive sibling insertion, sibling deletion, sibling
+            reorder, pretty-printing, reserialization, and canonical field reorder.
+          invariants:
+            - insert_node: "allocate fresh identity_seed for the new semantic node"
+            - unaffected_siblings_on_insert: "MUST NOT change"
+            - unaffected_siblings_on_delete: "MUST NOT change"
+            - reorder_siblings: "changes edge ordering only; stable_id of every node unchanged"
+        semantics: >
+          Encodes WHICH semantic node persists across edits. stable_id MUST NOT
+          change for simple sibling insertion, sibling deletion, sibling reorder,
+          pretty-printing, reserialization, or canonical field reorder.
+        hash_properties:
+          deterministic: true
+          collision_resistant: true
+          version_pinned_per_edition: true
+      semantic_id:
+        formula: >
+          semantic_id = hash(
+            node_type | kind | type_signature
+            | canonical_semantic_payload
+          )
+        canonical_semantic_payload:
+          for_expression: "serialized sub-graph of the expression's operands and operator, excluding position"
+          for_function: "serialized parameter types, return type, effect set, and body sub-graph hash"
+          for_pattern: "pattern constructor and field types"
+          for_literal: "literal value"
+          for_type_node: "type structure (fields, variants, constraints)"
+          for_effect_node: "effect kind and capability binding"
+          for_region: "region lifetime constraints"
+          for_task: "task effect set and capability list"
+          for_module: "module name and exported symbol set"
+          note: >
+            canonical_semantic_payload covers the full semantic content of the node,
+            not only type_signature. Two functions with the same signature but
+            different bodies MUST have different semantic_ids because their
+            body sub-graph hashes differ.
+        semantics: >
+          Encodes WHAT a node currently means. A replace_node or contract/body
+          update that preserves node identity MAY keep stable_id while MUST
+          recomputing semantic_id when canonical_semantic_payload changes.
+        hash_properties:
+          deterministic: true
+          collision_resistant: true
+          version_pinned_per_edition: true
+    scope:
+      node_types:
+        - module
+        - function
+        - block
+        - expression     # includes let_binding as a kind; Binding is not a separate node type
+        - pattern
+        - type
+        - effect
+        - region
+        - task
+    constraints:
+      id_properties:
+        deterministic: true
+        stable_across_transforms: true
+        must_not_depend_on_positional_node_id: true
+        must_not_depend_on_sibling_order: true
+    preservation_rules:
+      equivalence_predicate:
+        stable_id_preserved_iff: >
+          The node's (node_type, lineage_anchor, identity_seed) triple is unchanged.
+          stable_id does NOT depend on type_signature or semantic payload.
+          Changing a node's type signature, body, effects, or capabilities does NOT
+          change its stable_id — those changes are recorded in semantic_id only.
+          stable_id changes only when the node's structural position changes
+          (different lineage_anchor) or the semantic node is replaced/destroyed
+          (new identity_seed allocated, old tombstoned in patch log).
+        semantic_id_preserved_iff: >
+          node_type, kind, type_signature, AND canonical_semantic_payload are all
+          unchanged. Any change to body, operands, fields, effects, capabilities,
+          or type signature MUST produce a new semantic_id.
+      replace_node:
+        - case: >
+            (node_type, lineage_anchor, identity_seed) all unchanged
+            AND canonical_semantic_payload unchanged
+          action: preserve both stable_id and semantic_id
+        - case: >
+            (node_type, lineage_anchor, identity_seed) all unchanged
+            AND canonical_semantic_payload changed (body/type/effects changed)
+          action: preserve stable_id; recompute semantic_id
+        - case: >
+            identity_seed changes (old semantic node destroyed, new node created)
+          action: assign new stable_id (old tombstoned in patch log); recompute semantic_id
+      insert_node: >
+        Allocate a fresh identity_seed for the new semantic node.
+        new_node.stable_id = hash(node_type | lineage_anchor | identity_seed).
+        Update edge_order to include new_node at declared position.
+        NO OTHER existing node's stable_id changes.
+        VIOLATION: any implementation that recomputes stable_id for existing siblings on insert
+        MUST be rejected (it breaks incremental_validate and semantic_diff locality).
+      reorder_siblings: >
+        Updates edge_order list only.
+        MUST NOT change stable_id of any node.
+      reconnect_edges: does_not_change_stable_id_or_semantic_id_of_any_unaffected_node
+      modify_contract: >
+        stable_id changes iff identity_seed changes (node replaced or destroyed).
+        stable_id does NOT change when only type_signature or semantic payload changes.
+        semantic_id changes iff type_signature or canonical_semantic_payload changes.
+
+  - id: ARCH-003
+    title: patch_first_model
+    rule: transformation
+    statement: >
+      Program modification MUST occur via structural patches.
+    allowed_operations:
+      - insert_node
+      - replace_node
+      - reconnect_edges
+      - modify_contract
+    semantic_diff_contract:
+      primary_key: stable_id
+      secondary_key: semantic_id
+      added_nodes: >
+        present in after (by stable_id), absent in before.
+      removed_nodes: >
+        present in before (by stable_id), absent in after,
+        and no node in after has the same semantic_id.
+      modified_nodes: >
+        same stable_id in before and after, but one or more
+        properties have changed.
+      moved_nodes: >
+        a node in before has no matching stable_id in after,
+        AND a node in after has the same semantic_id but a
+        different stable_id (different structural position).
+        Move detection is best-effort: if semantic_id is
+        ambiguous (multiple nodes share it), the diff MUST
+        report removed_nodes + added_nodes instead.
+
+module_system_requirements:
+  - id: MOD-001
+    title: explicit_modules
+    statement: >
+      Modules MUST be named units of declarations with explicit visibility boundaries.
+  - id: MOD-002
+    title: declared_visibility
+    statement: >
+      Visibility MUST be declared (public / internal / private) and compiler-enforced.
+  - id: MOD-003
+    title: deterministic_dependency_resolution
+    scope: deferred_out_of_v1
+    statement: >
+      Dependency resolution MUST be deterministic and lockable via a content-addressed lockfile.
+      This requirement is OUT OF SCOPE for v1 (see scope.yaml MOD-SCOPE-007 through
+      MOD-SCOPE-009). v1 covers local compilation units only. Remote dependencies,
+      version solver, and lockfiles are deferred to a future edition.
+    constraints:
+      lock_file_pins_all_transitive_dependencies: true
+      vendoring_supported: true
+  - id: MOD-004
+    title: edition_gates_breaking_changes
+    statement: >
+      Breaking changes MUST be gated by a new edition identifier.
+    constraints:
+      each_edition_is_immutable_snapshot: true
+      deprecation_paths_machine_detectable: true
+  - id: MOD-005
+    title: acyclic_build_graph
+    statement: >
+      The build graph MUST be a directed acyclic graph; import order MUST NOT affect semantics.
+
+type_system_requirements:
+  - id: TYPE-001
+    title: strong_static_typing
+    rule: type_system
+    statement: >
+      The language MUST implement strong static typing.
+    allowed_types:
+      - primitive
+      - record
+      - algebraic_data_type
+      - generic
+      - outcome_t_e    # Outcome<T,E> is the ONLY fallible return type
+    prohibited:
+      - dynamic_typing
+      - runtime_type_mutation
+      - result_as_separate_type    # use Outcome<T,E> instead
+      - option_as_separate_type    # use a named error variant instead
+    notes:
+      - >
+        Result and Option are not distinct types in AXIOM v1.
+        Absence of a value MUST be encoded by choosing a descriptive error type:
+          Outcome<T, NotFound>   — value may not exist (e.g. map lookup)
+          Outcome<T, Empty>      — collection may be empty
+          Outcome<T, Unset>      — optional field may be unset
+        Outcome<T, Void> MUST NOT be used to encode absence.
+        Void is uninhabited; Outcome<T, Void> is equivalent to an infallible
+        return type T and is therefore not an optional or fallible encoding.
+        If a function is truly infallible its return type is T, not Outcome<T, Void>.
+
+  - id: TYPE-002
+    title: exhaustive_pattern_matching
+    rule: control_flow
+    statement: >
+      Pattern matching MUST be exhaustive.
+    compiler_behavior:
+      reject_if:
+        - missing_variants
+        - unreachable_branches
+
+  - id: TYPE-003
+    title: ownership_and_borrow_discipline
+    rule: type_system
+    statement: >
+      The type system MUST enforce ownership, borrowing, move, and alias discipline
+      to guarantee memory safety and data-race freedom in safe code.
+    ownership_modes:
+      owned: value has unique owner; moving transfers ownership
+      borrowed_shared: read-only reference; multiple may coexist
+      borrowed_exclusive: read-write reference; no other borrows active
+      moved: value has been consumed; subsequent use is a type error
+    rules:
+      - id: MOVE-001
+        statement: Moving an owned value invalidates the source binding.
+      - id: MOVE-002
+        statement: A function that takes ownership MUST be called with an owned value.
+      - id: BORROW-001
+        statement: borrowed_shared and borrowed_exclusive MUST NOT coexist on the same value.
+      - id: BORROW-002
+        statement: A borrowed reference MUST NOT outlive its source region.
+      - id: ALIAS-001
+        statement: Two borrowed_exclusive aliases to overlapping memory are a type error.
+      - id: ALIAS-002
+        statement: Aliasing is safe only for borrowed_shared or for disjoint regions.
+      - id: RACE-001
+        statement: >
+          Cross-task access to a value requires either:
+          (a) borrowed_shared with proof of task disjointness, or
+          (b) an explicit synchronization primitive.
+
+memory_model_requirements:
+  - id: MEM-001
+    title: region_arena_model
+    rule: memory_management
+    statement: >
+      Memory MUST be managed using regions (arenas) in conjunction with ownership
+      discipline from TYPE-003.
+    properties:
+      allocation_scope: explicit
+      lifetime: statically_verifiable
+      region_destroy: explicit
+    relationship_to_safety:
+      regions_define: allocation and deallocation discipline
+      ownership_defines: alias and lifetime discipline
+      both_required_for_memory_safety: true
+
+  - id: MEM-002
+    title: explicit_allocations
+    rule: allocation_visibility
+    statement: >
+      All allocations MUST be explicit.
+    allowed_allocations:
+      - stack
+      - region
+      - explicit_heap
+    forbidden:
+      - implicit_heap_allocation
+
+  - id: MEM-003
+    title: value_semantics_default
+    rule: mutability
+    statement: >
+      Values MUST be immutable by default.
+    mutation:
+      requires_explicit_annotation: true
+
+  - id: MEM-004
+    title: region_ownership_transfer
+    rule: concurrency_memory_interaction
+    statement: >
+      Region ownership MAY be transferred between tasks; the type system MUST
+      track this transfer to prevent use-after-transfer.
+    rules:
+      - id: CON-007
+        statement: A parent task MAY transfer ownership of a region to a child task by passing an owned Region value as a task input.
+      - id: CON-008
+        statement: Once a region is transferred to a child, the parent MUST NOT access any value borrowed from that region.
+      - id: CON-009
+        statement: When the child task completes, the region is either returned to the parent or destroyed by the child.
+      - id: CON-010
+        statement: borrowed_shared references to a region MAY be shared across tasks only if the region outlives all tasks that hold references to it.
+
+effect_system_requirements:
+  - id: EFF-001
+    title: explicit_effect_system
+    rule: function_signature
+    statement: >
+      All functions MUST declare their effects.
+    effects:
+      - pure
+      - region_alloc
+      - filesystem_read
+      - filesystem_write
+      - network_read
+      - network_write
+      - database_read
+      - database_write
+      - process_spawn
+      - time
+      - randomness
+      - unsafe_ffi
+
+  - id: EFF-002
+    title: effect_graph
+    rule: analysis
+    statement: >
+      Programs MUST maintain an effect dependency graph.
+    purpose:
+      - capability_enforcement
+      - safety_analysis
+
+  - id: EFF-003
+    title: capability_authority_model
+    rule: capability_objects
+    statement: >
+      Each non-structural effect MUST be backed by an explicit capability object.
+      Non-structural effects are all effects in the effect inventory EXCEPT
+      `region_alloc` (governed by MEM-* ownership rules) and `pure` (no authority).
+      The mapping between non-structural effects and capability types MUST be
+      one-to-one and exhaustive (CAP-006).
+      Ambient authority for any external resource is prohibited.
+    effect_to_capability_mapping:
+      # Every non-structural effect in EFF-001 MUST appear in this table.
+      # Any effect without a backing capability type is a spec violation.
+      filesystem_read:    FsReadCap
+      filesystem_write:   FsWriteCap
+      network_read:       NetworkReadCap
+      network_write:      NetworkWriteCap
+      database_read:      DatabaseReadCap
+      database_write:     DatabaseWriteCap
+      time:               TimeCap
+      randomness:         RandomCap
+      process_spawn:      ProcessCap
+      unsafe_ffi:         UnsafeFfiCap
+      region_alloc:       "(governed by MEM-* ownership rules; no external cap object)"
+      pure:               "(no authority required)"
+    capability_types:
+      FsReadCap:       authority to read from filesystem
+      FsWriteCap:      authority to write to filesystem
+      NetworkReadCap:  authority to read from network sockets / HTTP responses
+      NetworkWriteCap: authority to write to network sockets / HTTP requests
+      DatabaseReadCap: authority to read from a database connection
+      DatabaseWriteCap: authority to write to a database connection
+      TimeCap:         authority to read the clock
+      RandomCap:       authority to read entropy source
+      ProcessCap:      authority to spawn child processes
+      UnsafeFfiCap:    authority to call unsafe foreign functions
+    rules:
+      - id: CAP-001
+        statement: A function that declares effect E MUST receive a capability object for E.
+      - id: CAP-002
+        statement: Capability objects are owned values; passing one transfers authority.
+      - id: CAP-003
+        statement: Capability objects MUST NOT be forgeable by library code; they are created only at root system boundaries.
+      - id: CAP-004
+        statement: A function MUST NOT perform effect E without holding a matching capability.
+      - id: CAP-005
+        statement: Capability objects MUST be mockable for testing.
+      - id: CAP-006
+        statement: >
+          The set of capability types MUST equal the set of non-structural effects.
+          A validator MUST reject any effect declaration for which no capability type
+          exists, and any capability type for which no effect exists.
+          This invariant MUST be enforced at spec level (here) and at runtime level (CAP-001).
+    authority_boundaries:
+      system_root_capabilities: created at program entry point only
+      capability_split: MAY be narrowed (e.g., read-only sub-cap from read-write cap)
+      capability_revoke: MAY be dropped; dropped cap cannot be used
+      capability_delegation: MAY be passed to child tasks
+    system_interface_contract:
+      description: >
+        Root constructors are the sole source of capability objects. The constructor
+        set MUST be exhaustive: every non-structural effect MUST have a constructor.
+      provided_by_runtime_at_root_boundary:
+        - acquire_fs_read_cap(path_prefix)           -> FsReadCap
+        - acquire_fs_write_cap(path_prefix)          -> FsWriteCap
+        - acquire_network_read_cap(host_allow_list)  -> NetworkReadCap
+        - acquire_network_write_cap(host_allow_list) -> NetworkWriteCap
+        - acquire_database_read_cap(connection_spec) -> DatabaseReadCap
+        - acquire_database_write_cap(connection_spec) -> DatabaseWriteCap
+        - acquire_time_cap()                         -> TimeCap
+        - acquire_random_cap()                       -> RandomCap
+        - acquire_process_cap(allowed_commands)      -> ProcessCap
+        - acquire_unsafe_ffi_cap(allowed_symbols)    -> UnsafeFfiCap
+      restriction: no library code MAY call these constructors; only the root entrypoint MAY do so
+
+error_model_requirements:
+  - id: ERR-001
+    title: unified_error_model
+    rule: failure_handling
+    statement: >
+      All fallible operations MUST return Outcome<T,E>.
+      Outcome<T,E> is the single unified fallible return type.
+    prohibited:
+      - exceptions
+      - null_errors
+      - sentinel_errors
+      - result_as_separate_type
+      - option_as_separate_type
+      - outcome_t_void_as_absence_encoding  # Void is uninhabited; Outcome<T,Void> == T (infallible)
+    notes:
+      - >
+        Absence MUST be encoded with a named error variant, not with Outcome<T, Void>.
+        Outcome<T, Void> collapses to an infallible T because Void has no inhabitants.
+        Examples of correct absence encoding:
+          Outcome<T, NotFound>  — key not in map
+          Outcome<T, Empty>     — collection is empty
+          Outcome<T, Unset>     — optional field was not set
+        This enforces a single propagation discipline and eliminates the Option/Result split.
+
+concurrency_requirements:
+  - id: CON-001
+    title: structured_concurrency
+    rule: task_model
+    statement: >
+      Concurrency MUST follow structured task lifetimes.
+    guarantees:
+      - parent_scope_owns_children
+      - cancellation_propagates
+    operational_semantics:
+      spawn: "spawn(task) -> TaskHandle<T,E>"
+      join: "join(handle) -> Outcome<T, TaskError<E>>; blocks until child completes"
+      await_all_fail_fast: >
+        await_all(handles) -> Outcome<Vec<T>, TaskError<E>>
+        Blocks until either: (a) all child tasks succeed, or (b) any child fails.
+        On (a): returns Success(Vec<T>) in spawn order.
+        On (b): sends cancellation to all remaining running children (does NOT wait
+          for them to finish), then returns Failure(TaskError<E>) with the first
+          failure observed. The scheduler MUST NOT block the caller on cancelled
+          children; their cleanup runs asynchronously.
+        This is the default (fail-fast) mode.
+      await_all_collect: >
+        await_all(handles, collect_errors: true)
+          -> Outcome<Vec<T>, TaskError::Collected(successes: Vec<T>, errors: Vec<TaskError<E>>)>
+        Blocks until ALL child tasks complete (succeed or fail); does NOT cancel
+          children on failure.
+        Returns Success(Vec<T>) if all children succeed (successes in spawn order).
+        Returns Failure(TaskError::Collected(successes, errors)) if one or more fail,
+          where successes contains the return values of successful children (in spawn
+          order; failed positions are absent), and errors contains one TaskError<E>
+          per failed child in completion order.
+        The partial success data is part of the formal error type; implementers MUST
+          populate both fields.
+      await_any: "await_any(handles) -> Outcome<T, TaskError<E>>; blocks until first succeeds; cancels remainder"
+    timeout_model:
+      primitive: "with_timeout(duration, task) -> Outcome<T, TimeoutError>"
+      cancellation: cancels task and all its children if duration exceeded
+      time_units: logical (requires TimeCap for wall-clock binding)
+    failure_propagation:
+      - id: CON-003
+        statement: If a child task fails and the parent does not handle the error, the parent MUST be cancelled (fail-fast default).
+      - id: CON-004
+        statement: >
+          The parent MAY opt into error collection mode by calling
+          await_all(handles, collect_errors: true). In this mode all children
+          run to completion; the parent is NOT cancelled when a child fails.
+          On mixed success/failure the return type carries both partial successes
+          and errors: TaskError::Collected(successes: Vec<T>, errors: Vec<TaskError<E>>).
+          Both fields MUST be populated by the runtime.
+      - id: CON-005
+        statement: A panic in a child task is always propagated to the parent as TaskError::Panic.
+      - id: CON-006
+        statement: Detached tasks MUST be lexically marked with detach! and are not covered by structured guarantees.
+
+  - id: CON-002
+    title: task_dependency_graph
+    rule: scheduling
+    statement: >
+      Concurrent execution MUST be representable as a task dependency graph.
+
+performance_requirements:
+  - id: PERF-001
+    title: zero_cost_abstractions
+    rule: compilation
+    statement: >
+      Language abstractions MUST compile to equivalent low-level instructions.
+
+  - id: PERF-002
+    title: deterministic_data_layout
+    rule: memory_layout
+    statement: >
+      All data layouts MUST be deterministic.
+
+  - id: PERF-003
+    title: minimal_runtime
+    rule: runtime_dependencies
+    statement: >
+      The language runtime MUST remain minimal.
+    prohibited:
+      - garbage_collection
+      - dynamic_reflection
+      - ambient_authority_constructors_outside_root
+
+program_analysis_requirements:
+  - id: ANA-001
+    title: incremental_verification
+    rule: compilation
+    statement: >
+      Compilation MUST support incremental verification.
+    keyed_by: stable_id
+
+  - id: ANA-002
+    title: semantic_diff
+    rule: program_analysis
+    statement: >
+      Program differences MUST be computed structurally and keyed by stable_id.
+    diff_categories:
+      - added_nodes
+      - removed_nodes
+      - modified_nodes
+      - moved_nodes
+
+compilation_requirements:
+  - id: COMP-001
+    title: ssa_lowering
+    rule: backend
+    statement: >
+      The canonical program graph MUST be lowerable into SSA.
+
+  - id: COMP-002
+    title: native_code_generation
+    rule: output
+    statement: >
+      Programs MUST compile to native machine code.
+
+interoperability_requirements:
+  - id: ABI-001
+    title: c_abi_interop
+    rule: foreign_function_interface
+    statement: >
+      The language MUST support direct interoperability with C ABI.
+    constraints:
+      requires_capability: UnsafeFfiCap
+      abi_layout_calling_convention_ownership_must_be_declarable: true
+
+determinism_requirements:
+  - id: DET-001
+    title: reproducible_compilation
+    rule: build
+    statement: >
+      Compilation MUST be deterministic.
+
+representation_requirements:
+  - id: REPR-001
+    title: canonical_graph_source_of_truth
+    statement: >
+      In v1, the canonical typed graph SHALL remain the sole source of truth.
+      Source text MAY exist only as a derived export and SHALL NOT be normative.
+  - id: REPR-002
+    title: optional_printer
+    scope: optional_in_v1
+    statement: >
+      A printer MAY be provided to export canonical graph form into source text.
+  - id: REPR-003
+    title: optional_parser
+    scope: optional_in_v1
+    statement: >
+      A parser MAY be provided to import source text into canonical graph form.
+  - id: REPR-004
+    title: optional_formatter
+    scope: optional_in_v1
+    statement: >
+      A formatter MAY be provided for text normalization, but SHALL NOT define
+      language conformance or canonical semantics.
+  - id: REPR-005
+    title: graph_conformance
+    statement: >
+      Conformance MUST be determined by canonical graph equivalence, not by
+      textual equality.
+
+agent_execution_model:
+  agent_usage:
+    synthesis_rules:
+      - all_generated_features MUST satisfy requirements
+      - violations MUST be rejected during validation
+      - agents MUST declare a target edition before generating code
+    validation_mode:
+      strict: true
+      reject_unknown_constructs: true
+
+semantic_invariants:
+  - id: S1
+    invariant: Safe code cannot trigger data races.
+  - id: S2
+    invariant: Resource acquisition and release points are visible or derivable.
+  - id: S3
+    invariant: Performance-relevant operations are explicit enough for cost inspection.
+  - id: S4
+    invariant: Any privileged action can be traced back to an explicit capability object.
+  - id: S5
+    invariant: If text tooling is provided, equivalent source under canonical formatting preserves graph semantics.
+  - id: S6
+    invariant: stable_id survives sibling insertion, sibling deletion, sibling reorder, pretty-printing, reserialization, and canonical field reorder whenever the semantic node is preserved.
+  - id: S7
+    invariant: No library function performs an external side effect without holding a corresponding capability object.
+
+tooling_contract:
+  compiler:
+    MUST:
+      - expose structured JSON diagnostics keyed by requirement and node stable_id
+      - expose dependency and symbol information via query API
+      - support reproducible builds
+      - expose effect summaries per function (keyed by stable_id)
+      - expose borrow and ownership summaries per function (keyed by stable_id)
+      - expose capability requirements per function (keyed by stable_id)
+    SHOULD:
+      - expose typed intermediate representations
+      - expose optimization remarks (inlining, vectorization, layout) keyed by stable_id
+  formatter:
+    # REPR-004: formatter is text_to_canonical_text (i.e., operates on text, not graphs).
+    # It normalises printer output. The call chain is:
+    #   print(g)             -> text           (printer, graph -> text,  REPR-002)
+    #   format(print(g))     -> canonical_text (formatter, text -> text, REPR-004)
+    #   parse(format(print(g))) -> g'          (parser, text -> graph,   REPR-003; optional)
+    # format(g) is NOT a valid call — g is a graph, format takes text.
+    level: MAY    # optional in v1; REPR-004
+    api:
+      print: "print(graph) -> text           # printer: graph to text (REPR-002)"
+      format: "format(text) -> canonical_text # formatter: text to canonical text (REPR-004)"
+    if_provided_MUST:
+      - be deterministic: "format(t) depends only on text content and edition; same input always produces same output"
+      - be idempotent: "format(format(t)) == format(t)"
+      - be edition-aware: "output is valid only for the declared edition"
+      - preserve semantics: "if a parser exists, parse(format(print(g))) MUST produce a graph semantically equivalent to g"
+    if_parser_also_provided_MUST:
+      - satisfy round-trip: "parse(format(print(g))) is semantically equivalent to g (REPR-003, REPR-005)"
+    notes:
+      - >
+        Conformance is determined by the canonical graph (REPR-005), not textual agreement.
+        The formatter is a normalization convenience, not a source of truth.
+  package_manager:
+    # Package manager, remote dependencies, and version solver are OUT OF
+    # SCOPE for v1 (MOD-SCOPE-007, MOD-SCOPE-008, MOD-SCOPE-009 in scope.yaml).
+    # v1 module system covers local compilation units only (MOD-SCOPE-001 through
+    # MOD-SCOPE-006). Deterministic resolution and lockfiles are deferred.
+    level: out_of_scope_for_v1
+    future_editions:
+      - deterministic dependency resolution
+      - content-addressed lockfile
+      - vendoring and offline builds
+  agent_query_api:
+    MUST:
+      - query_symbols(module_path) -> SymbolTable
+      - query_dependencies(package) -> DependencyGraph
+      - query_effect_summary(function_stable_id) -> EffectSet
+      - query_borrow_summary(function_stable_id) -> BorrowGraph
+      - query_capability_requirements(function_stable_id) -> CapabilitySet
+    SHOULD:
+      - optimization_remarks(program_graph, optimization_level) -> RemarkSet
+
+initial_design_bias:
+  runtime_model:
+    level: MUST
+    statement: The implementation uses ahead-of-time native compilation with a minimal runtime. No GC.
+  memory_model:
+    level: MUST
+    statement: Regions define allocation/deallocation; ownership/borrow rules define alias/lifetime. Both are required for memory safety.
+  async_model:
+    level: MUST
+    statement: Structured async tasks with explicit join/await/timeout/failure-propagation semantics. No implicit green threads.
+  metaprogramming:
+    level: SHOULD
+    statement: The first implementation should prefer hygienic, typed macros or compile-time functions over unrestricted textual preprocessing.
+  error_model:
+    level: MUST
+    statement: Outcome<T,E> is the single fallible return type. Result and Option are not separate error channels.
+  capability_model:
+    level: MUST
+    statement: All external resource access flows through explicit capability objects, not ambient authority.
+
+acceptance_checks:
+  - id: A1
+    question: Can an agent determine whether a function allocates, blocks, performs I/O, or may fail without whole-program guessing?
+  - id: A2
+    question: Can safe code be optimized aggressively without relying on undefined behavior?
+  - id: A3
+    question: Can a human or agent audit every unsafe boundary and every external authority boundary via explicit capability objects?
+  - id: A4
+    question: Can generated code be formatted, compiled, and diagnosed in a deterministic machine-consumable pipeline?
+  - id: A5
+    question: Can an agent trace any external side effect back to a specific capability object passed into the call chain?
+  - id: A6
+    question: Can two program graphs be compared structurally (semantic_diff) using stable_ids that survive replace_node, sibling insertion, and sibling reorder when semantic node identity is preserved?
+  - id: A7
+    question: Can an agent reliably target a specific language edition and detect deprecated constructs without human intervention?

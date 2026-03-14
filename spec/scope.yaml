@@ -1,0 +1,320 @@
+spec:
+  name: axiom-v1-scope
+  version: 1.0
+  status: normative
+  last_updated: 2026-03-14
+  audience: autonomous-agents
+  purpose: >
+    Define the exact boundary of AXIOM v1. Specifies what is in-scope,
+    out-of-scope, and intentionally deferred. Agents MUST consult this document
+    before generating or validating any v1 construct.
+
+normative_statement:
+  id: SCOPE-000
+  level: MUST
+  statement: >
+    The canonical typed program graph is the sole normative representation of
+    AXIOM programs in v1. All other representations (surface syntax, textual
+    form, printed output) are derived artifacts. Conformance is determined
+    by the graph representation, not by any textual form.
+
+# ---------------------------------------------------------------------------
+# ERROR MODEL
+# ---------------------------------------------------------------------------
+
+error_model:
+  decision: only_outcome
+  rationale: >
+    A single error type reduces agent decision surface without loss of
+    expressiveness. Result<T,E> is excluded from v1 to prevent synonym
+    ambiguity in the canonical graph model.
+
+  in_scope:
+    - id: ERR-SCOPE-001
+      construct: "Outcome<T, E>"
+      variants:
+        - Success(T)
+        - Failure(E)
+      level: MUST
+      note: >
+        Sole canonical error carrier in v1. Exhaustive pattern matching
+        over Outcome variants is required by TYPE-002.
+
+  out_of_scope:
+    - id: ERR-SCOPE-002
+      construct: "Result<T, E>"
+      reason: >
+        Excluded from v1 canonical graph model and normative spec. MAY be
+        introduced as a surface-level alias only in a future edition, after
+        the core model is stable. MUST NOT appear in graph node types.
+    - id: ERR-SCOPE-003
+      construct: exceptions
+      reason: Prohibited. See ERR-001.
+    - id: ERR-SCOPE-004
+      construct: null_errors
+      reason: Prohibited. See ERR-001.
+    - id: ERR-SCOPE-005
+      construct: sentinel_errors
+      reason: Prohibited. See ERR-001.
+    - id: ERR-SCOPE-006
+      construct: "Option<T>"
+      reason: >
+        Excluded from v1 canonical graph model. Option<T> as a distinct type
+        is not in scope; it would introduce a second error/absence channel
+        alongside Outcome<T,E> and violate ERR-001.
+        Absence MUST be encoded as a named error variant:
+          Outcome<T, NotFound>  — key not in map
+          Outcome<T, Empty>     — collection is empty
+          Outcome<T, Unset>     — optional field was not set
+        Outcome<T, Void> MUST NOT be used as an absence encoding; Void is
+        uninhabited, so Outcome<T, Void> is equivalent to an infallible T.
+
+  future_versions:
+    - id: ERR-SCOPE-F001
+      construct: "extended Outcome variants"
+      example: "partial, blocked, invalid, deferred"
+      note: >
+        v2+ MAY extend the variant set. v1 fixes exactly two variants:
+        Success(T) and Failure(E). Agents MUST NOT generate additional
+        variants in v1 mode.
+
+# ---------------------------------------------------------------------------
+# PROGRAM REPRESENTATION
+# ---------------------------------------------------------------------------
+
+program_representation:
+  decision: graph_only_source_of_truth
+  rationale: >
+    Dual authority (graph + textual form) creates round-trip edge cases,
+    semantic divergence, and double complexity for all tooling.
+    For an agent-native language this is not acceptable in v1.
+
+  representation_hierarchy:
+    - id: REPR-001
+      form: canonical_typed_program_graph
+      status: authoritative
+      level: MUST
+    - id: REPR-002
+      form: printer_output
+      status: derived
+      direction: graph_to_text
+      level: MAY
+      note: Useful but not normative. Canonicity is defined by the graph.
+    - id: REPR-003
+      form: parser_output
+      status: derived
+      direction: text_to_graph
+      level: MAY
+      note: >
+        Optional in v1. If a parser is provided, it MUST produce a graph
+        that is semantically equivalent to a directly constructed graph.
+        Parser MUST NOT be treated as a source of truth.
+    - id: REPR-004
+      form: formatter
+      status: normalization_layer
+      direction: text_to_canonical_text
+      level: MAY
+      note: Operates over printer output. Does not affect graph semantics.
+
+  conformance_rule:
+    id: REPR-005
+    level: MUST
+    statement: >
+      A program is conformant if and only if its canonical graph representation
+      satisfies all normative requirements. Textual agreement is not sufficient
+      for conformance.
+
+# ---------------------------------------------------------------------------
+# MEMORY DISCIPLINE
+# ---------------------------------------------------------------------------
+
+memory_discipline:
+  decision: region_safety_plus_ownership_borrow_checker_in_v1
+  rationale: >
+    Regions alone do not guarantee memory safety or data-race freedom.
+    v1 includes a full ownership and borrow discipline (Phase 4) integrated
+    with the region model (Phase 5). These two components are jointly
+    required for memory safety and are designed as a unified system.
+    See axiom_language_creation_plan.md Phase 4–5 and Spikes 2–3.
+
+  in_scope:
+    - id: MEM-SCOPE-001
+      rule: values_immutable_by_default
+      level: MUST
+      statement: All bindings are immutable unless explicitly annotated mutable.
+    - id: MEM-SCOPE-002
+      rule: explicit_mutable_bindings
+      level: MUST
+      statement: Mutability MUST be declared at the binding site.
+    - id: MEM-SCOPE-003
+      rule: ownership_modes
+      level: MUST
+      statement: >
+        Every value carries one of: owned, borrowed_shared,
+        borrowed_exclusive, moved. Rules MOVE-001, MOVE-002, BORROW-001,
+        BORROW-002, ALIAS-001, ALIAS-002, RACE-001 are enforced at
+        compile time in safe code.
+    - id: MEM-SCOPE-004
+      rule: region_scoped_references
+      level: MUST
+      statement: >
+        A borrowed reference MUST NOT outlive its source region (BORROW-002).
+        Cross-region exclusive aliasing is prohibited (ALIAS-001).
+    - id: MEM-SCOPE-005
+      rule: explicit_allocation
+      level: MUST
+      statement: >
+        All allocations MUST be explicit (stack | region | explicit_heap).
+        Implicit heap allocation is prohibited. See MEM-002.
+    - id: MEM-SCOPE-006
+      rule: borrow_checker_in_v1
+      level: MUST
+      statement: >
+        The ownership/borrow checker is not optional in v1 safe code.
+        It is a required component of axiom-typecheck (Phase 4 deliverable).
+        Unsafe blocks MAY override borrow rules with explicit contracts.
+      preconditions:
+        - Spike 2 (ownership inference tractability) MUST pass before Phase 4 begins.
+        - Spike 3 (region+borrow interaction correctness) MUST pass before Phase 4 begins.
+
+  out_of_scope:
+    - id: MEM-SCOPE-007
+      construct: non_lexical_lifetimes
+      reason: >
+        NLL (lifetime inference across non-contiguous code paths) is not
+        required in v1. Lifetime scopes are lexical. MAY be added in v2.
+    - id: MEM-SCOPE-008
+      construct: higher_kinded_lifetimes
+      reason: Deferred. Not required for the v1 language subset.
+
+# ---------------------------------------------------------------------------
+# MODULE SYSTEM
+# ---------------------------------------------------------------------------
+
+module_system:
+  decision: minimal_module_system_in_v1
+  rationale: >
+    Module system is required for stable compilation units, incremental
+    validation, graph partitioning, ABI/FFI boundaries, and agent patch
+    locality. Absence of a module system in v1 would create structural
+    problems for the compiler and agent tooling.
+
+  in_scope:
+    - id: MOD-SCOPE-001
+      construct: module_as_graph_node
+      level: MUST
+      statement: >
+        Module MUST be a first-class node type in the canonical program graph.
+        See ARCH-002 node_types.
+    - id: MOD-SCOPE-002
+      construct: explicit_exports
+      level: MUST
+      statement: Exported symbols MUST be explicitly declared.
+    - id: MOD-SCOPE-003
+      construct: explicit_imports
+      level: MUST
+      statement: Imported symbols MUST be explicitly declared with source module.
+    - id: MOD-SCOPE-004
+      construct: no_cyclic_imports
+      level: MUST
+      statement: >
+        Cyclic module imports are prohibited in v1. The import graph MUST be
+        a directed acyclic graph (DAG).
+    - id: MOD-SCOPE-005
+      construct: deterministic_name_resolution
+      level: MUST
+      statement: >
+        Name resolution MUST be deterministic and order-independent.
+        Resolution MUST NOT depend on import ordering or ambient environment.
+    - id: MOD-SCOPE-006
+      construct: no_import_side_effects
+      level: MUST
+      statement: >
+        Importing a module MUST NOT execute code or produce side effects.
+        Module initialization with side effects is prohibited in v1.
+
+  out_of_scope:
+    - id: MOD-SCOPE-007
+      construct: package_manager
+      reason: >
+        Remote dependency resolution, version solver, and package registry
+        are out of v1 scope. Package ecosystem tooling MAY be introduced
+        in a later phase.
+    - id: MOD-SCOPE-008
+      construct: remote_dependencies
+      reason: Deferred. v1 scope is local compilation units only.
+    - id: MOD-SCOPE-009
+      construct: version_solver
+      reason: Deferred to package ecosystem phase.
+    - id: MOD-SCOPE-010
+      construct: cyclic_imports
+      reason: Prohibited in v1. MAY be reconsidered in v2 with explicit cycle breakers.
+
+# ---------------------------------------------------------------------------
+# V1 CORE INVENTORY
+# ---------------------------------------------------------------------------
+
+v1_core_inventory:
+  description: >
+    Normative list of constructs that MUST be present in a conformant v1
+    implementation. The previous label "Exhaustive" was removed because
+    conformance is determined by satisfying all normative requirements in this
+    document and in agent-language-design.yaml, not by this list alone.
+    Agents MUST NOT generate constructs that are explicitly listed as
+    out_of_scope when targeting edition axiom-v1.
+
+  in_scope:
+    # Core program representation
+    - canonical_typed_program_graph       # ARCH-001; sole normative representation (SCOPE-000)
+    - patch_engine                        # ARCH-003: insert_node, replace_node, reconnect_edges, modify_contract
+    - stable_id_and_semantic_id           # ARCH-002: path-anchored stable_id; content-anchored semantic_id
+
+    # Type system
+    - type_checker_with_borrow            # TYPE-001, TYPE-002, TYPE-003: ownership/borrow/move/alias checker
+    - outcome_type                        # ERR-001: Outcome<T,E> = Success(T) | Failure(E); sole fallible return type
+
+    # Memory
+    - region_memory_model                 # MEM-001, MEM-002, MEM-003; integrated with borrow checker
+
+    # Effects and capabilities
+    - effect_checker                      # EFF-001, EFF-002: effect inference and propagation
+    - capability_authority_model          # EFF-003, CAP-001–005: explicit capability objects; no ambient authority
+
+    # Concurrency (P6, CON-001 through CON-010; normative in v1)
+    - structured_concurrency              # CON-001: parent-child task tree; fail-fast default
+    - task_dependency_graph               # CON-002: concurrent execution as task graph
+    - join_await_timeout_primitives       # spawn, join, await_all (fail-fast + collect_errors), await_any, with_timeout
+    - failure_propagation                 # CON-003–006: fail-fast; panic propagation; detach! marking
+    - region_ownership_transfer           # CON-007–010; MEM-004: region ownership between tasks
+
+    # Module system (local compilation units only)
+    - minimal_module_system               # MOD-SCOPE-001 through MOD-SCOPE-006
+
+    # Compilation
+    - ssa_lowering                        # COMP-001
+    - native_compilation                  # COMP-002
+
+  out_of_scope:
+    - result_type_alias                   # Excluded; see ERR-SCOPE-002
+    - option_type                         # Excluded; see ERR-SCOPE-006
+    - textual_authoring_workflow_as_canonical  # REPR-002 through REPR-004 are MAY
+    - non_lexical_lifetimes               # Deferred; see MEM-SCOPE-007
+    - package_manager_and_registry        # Deferred; see MOD-SCOPE-007
+    - version_solver                      # Deferred; see MOD-SCOPE-009
+    - macro_metaprogramming               # Deferred
+    - multiple_equivalent_surface_forms   # SCOPE-000: graph is sole normative form
+    - dynamic_typing
+    - garbage_collection
+    - dynamic_reflection
+
+# ---------------------------------------------------------------------------
+# EDITION DECLARATION
+# ---------------------------------------------------------------------------
+
+edition:
+  id: axiom-v1
+  level: MUST
+  statement: >
+    Code generation agents MUST declare target edition axiom-v1 when
+    generating v1-conformant programs. The toolchain MUST reject constructs
+    that are out-of-scope for the declared edition. See P15.
