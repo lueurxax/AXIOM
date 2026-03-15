@@ -14,6 +14,7 @@ normative_keywords:
   MUST: absolute requirement
   MUST_NOT: absolute prohibition
   SHOULD: strong recommendation
+  SHOULD_NOT: strong recommendation to avoid; violation requires documented justification
   MAY: optional capability
 
 design_goals:
@@ -777,6 +778,24 @@ concurrency_requirements:
         statement: Detached tasks MUST be lexically marked with detach! and are not covered by structured guarantees.
 
   - id: CON-002
+    title: parent_completion_invariant
+    rule: task_model
+    statement: >
+      A parent task MUST NOT complete (succeed, fail, or return) while any child
+      task is still running. "Running" includes cleanup after cancellation.
+      The parent MUST either join all children (await full termination) or send
+      cancellation and then wait for all cancelled children to fully terminate
+      before the parent itself returns.
+      There is no distinction between "semantic completion" and "cleanup completion"
+      for this rule: a child is done only when fully terminated.
+      This invariant applies to all await primitives: join, await_all,
+      await_any, and with_timeout.
+    note: >
+      This requirement was previously embedded only in CON-001.guarantees.
+      It is promoted to a standalone requirement so diagnostics and test
+      expectations can reference it unambiguously as CON-002.
+
+  - id: CON-011
     title: task_dependency_graph
     rule: scheduling
     statement: >

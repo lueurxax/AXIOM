@@ -86,7 +86,7 @@ Each skill is mapped to specification requirements and to the phase of the plan 
 | Skill | Description | Requirements |
 |------|----------|-------|
 | **Structured task model** | Parent-child task tree (CON-001: one parent per task); a parent MUST NOT complete while children are running (CON-002); propagating cancellation | CON-001, CON-002 |
-| **Task dependency graph** | `parent_child` edges MUST form a tree; `cancellation` and `dependency` edges are separate structures; the validator enforces CON-001-CON-010 | CON-001-010 |
+| **Task dependency graph** | `parent_child` edges MUST form a tree; `cancellation` and `dependency` edges are separate structures; the validator enforces CON-001–CON-011 (CON-011 = task_dependency_graph scheduling rule) | CON-001-011 |
 | **join / await / timeout semantics** | `join`, `await_all` (fail-fast: early exit on first failure, async cleanup; `collect_errors`: waits for all and returns `Collected(successes, errors)`), `await_any` (`all-failed` / `all-cancelled` / `empty`), `with_timeout` | CON-003-006 |
 | **Region ownership transfer between tasks** | Transfer an owned `Region` through task inputs; static verification of CON-007-CON-010 | CON-007-010 |
 | **Data race analysis** | Static proof of race freedom through task disjointness or synchronization primitives (RACE-001) | RACE-001 |

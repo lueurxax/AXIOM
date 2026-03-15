@@ -135,7 +135,7 @@ memory_discipline:
     v1 includes a full ownership and borrow discipline (Phase 4) integrated
     with the region model (Phase 5). These two components are jointly
     required for memory safety and are designed as a unified system.
-    See axiom_language_creation_plan.md Phase 4–5 and Spikes 2–3.
+    See docs/planning/language-creation-plan.md Phase 4–5 and Spikes 2–3.
 
   in_scope:
     - id: MEM-SCOPE-001
@@ -266,6 +266,11 @@ v1_core_inventory:
   in_scope:
     # Core program representation
     - canonical_typed_program_graph       # ARCH-001; sole normative representation (SCOPE-000)
+    - hierarchical_graph_structure        # P16, ARCH-001: Program > Module > Function > Region/Effect/Task hierarchy
+    - boundary_crossing_nodes             # ARCH-004, BCN-001–004: call_node, effect_node, region_escape_node,
+                                          #   capability_transfer_node, task_spawn_node, ffi_call_node
+    - scoped_node_identity                # ARCH-005: stable_id scoped to containment path; inter-function locality
+    - patch_scope_locality                # ARCH-006: patches declare target scope; scope_violation rejection
     - patch_engine                        # ARCH-003: insert_node, replace_node, reconnect_edges, modify_contract
     - stable_id_and_semantic_id           # ARCH-002: path-anchored stable_id; content-anchored semantic_id
 
@@ -280,9 +285,10 @@ v1_core_inventory:
     - effect_checker                      # EFF-001, EFF-002: effect inference and propagation
     - capability_authority_model          # EFF-003, CAP-001–005: explicit capability objects; no ambient authority
 
-    # Concurrency (P6, CON-001 through CON-010; normative in v1)
+    # Concurrency (P6, CON-001 through CON-011; normative in v1)
     - structured_concurrency              # CON-001: parent-child task tree; fail-fast default
-    - task_dependency_graph               # CON-002: concurrent execution as task graph
+    - parent_completion_invariant         # CON-002: parent MUST NOT complete while any child is running
+    - task_dependency_graph               # CON-011: concurrent execution as task graph
     - join_await_timeout_primitives       # spawn, join, await_all (fail-fast + collect_errors), await_any, with_timeout
     - failure_propagation                 # CON-003–006: fail-fast; panic propagation; detach! marking
     - region_ownership_transfer           # CON-007–010; MEM-004: region ownership between tasks

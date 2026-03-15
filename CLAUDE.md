@@ -12,8 +12,13 @@ The repository is currently in the **specification and planning phase**. No impl
 AXIOM/
 ├── README.md                        # Primary repository entry point
 ├── CLAUDE.md                        # Project notes for agent workflows
-├── axiom_language_creation_plan.md  # Phased implementation roadmap
-├── skills-required.md               # Skill map by implementation phase
+├── docs/
+│   ├── README.md                    # Human-facing documentation index
+│   ├── architecture/
+│   │   └── architecture-comparison.md
+│   └── planning/
+│       ├── language-creation-plan.md
+│       └── required-skills.md
 └── spec/
     ├── agent-language-design.yaml   # Foundational language design specification
     └── scope.yaml                   # Exact AXIOM v1 scope and exclusions

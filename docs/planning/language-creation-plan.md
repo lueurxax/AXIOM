@@ -797,7 +797,7 @@ These rules make `parent_scope_owns_children` statically verifiable rather than 
 
 ```
 task scheduler specification (operational semantics document)
-task dependency graph validator (enforces CON-001 through CON-010)
+task dependency graph validator (enforces CON-001 through CON-011)
 ```
 
 ---
@@ -1129,7 +1129,7 @@ The timeline below is organized around **verifiable milestones** rather than cal
 
 ## Phase 7 — Concurrency Model
 - Entry: Phases 5 and 6 complete
-- Exit: CON-001 through CON-010 validated; region ownership transfer tests pass; failure propagation tests pass
+- Exit: CON-001 through CON-011 validated; region ownership transfer tests pass; failure propagation tests pass
 
 ## Phase 8 — Intermediate Representation
 - Entry: Phase 7 complete
